@@ -58,9 +58,6 @@
         width: 100%;
         height: 2px;
         background-color: #6c757d;
-        /* grey strike line */
-        transform: rotate(-20deg);
-        transform-origin: center;
       }
 
       #recordingIndicator {
@@ -98,7 +95,7 @@
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-      const userId = ' < ? = userId ? > ';
+      const userId = '<?= userId ?>';
       let audioContext, mediaStream, sourceNode, processorNode, audioData, currentWavBlob;
       const startBtn = document.getElementById('startBtn');
       const stopBtn = document.getElementById('stopBtn');
