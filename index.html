@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><?= appName ?></title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Source Sans Pro', sans-serif;
+      background-color: #f8f9fa;
+      padding-top: 60px;
+    }
+    .custom-navbar {
+      background-color: #5e33bf;
+    }
+    .custom-navbar .navbar-brand {
+      font-weight: 700;
+      color: white;
+    }
+    .card { max-width: 900px; margin: auto; }
+    #spinner { display: none; }
+    audio { width: 100%; margin-top: 10px; }
+    button:disabled {
+      background-color: #cccccc !important;
+      color: #6c757d !important;
+      border-color: #b5b5b5 !important;
+      opacity: 1 !important;
+      cursor: not-allowed !important;
+    }
+    #recordingIndicator { font-size: 1.2rem; }
+    #landingPanel { max-width: 500px; margin: auto; display: none; }
+    #recordingPanel { display: none; }
+  </style>
+</head>
+<body>
+
+
+
+<nav class="navbar navbar-expand-lg fixed-top custom-navbar">
+  <div class="container">
+    <a class="navbar-brand fw-bold text-white" href="#">
+      <img src="https://ssd.dept.shef.ac.uk/calculators/logo.png" alt="TUoS Logo" style="height: 30px; margin-right: 8px;">
+      <?= appName ?>
+    </a>
+    <div class="flex-grow-1"></div>  
+    <span class="navbar-brand fw-bold text-white">token: <?= userId ?></span>
+  </div>
+</nav>
+
+<!-- Landing panel -->
+<div id="landingPanel" class="container mt-5">
+  <div class="card shadow-sm p-4">
+    <h3 class="text-center mb-3">Enter Your Token</h3>
+    <p>Please ensure this token is the same one you have been given in an email. This token links your recordings to you, so it is very important that the token is matches the one you have been given. If it does not match, you can edit it here before you make your recordings.</p>
+    <label class="form-label">Token:</label>
+    <input id="tokenInput" class="form-control" value="<?= userId ?>"><br>
+    <p>Click continue to go to the recording page, where you will record your voice to participate in this study. You can leave and come back to this task at any time, and your progress will be saved.</p>
+    <button id="goBtn" class="btn btn-primary w-100 mt-3">Continue</button>
+  </div>
+</div>
+
+<!-- Recording panel -->
+<div id="recordingPanel" class="container mt-5">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h3 class="card-title text-center mb-4">Record</h3>
+
+
+      <div class="mb-3">
+        <div class="progress" style="height: 30px;">
+          <div id="progressBar" class="progress-bar" role="progressbar" 
+               style="width: 0%; background-color: #5e33bf; color: white; text-shadow: 1px 1px 2px #000; padding-left: 5px;" 
+               aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            0%
+          </div>
+        </div>
+      </div>
+
+      <p class="text-center"> Utterance: <strong id="utteranceText"></strong>
+        <span id="loadingNext" class="text-muted" style="display:none;">⏳ Loading next utterance...</span>
+      </p>
+
+      <div class="d-flex flex-wrap flex-md-row flex-column justify-content-center mb-3 gap-2">
+        <button id="startBtn" class="btn btn-success">Start Recording</button>
+        <button id="stopBtn" class="btn btn-danger" disabled>Stop</button>
+        <button id="redoBtn" class="btn btn-warning" disabled>Redo</button>
+        <button id="submitBtn" class="btn btn-primary" disabled>Submit</button>
+      </div>
+      <div class="d-flex justify-content-center mb-3">
+        <span id="spinner" class="fw-bold">⏳ Uploading...</span>
+      </div>
+      <p id="recordingIndicator" class="text-center fw-bold" style="color: red; display: none;"> 🔴 Recording... </p>
+      <p class="text-center">
+        <span>You can listen back to your recording before you submit it using this audio player:</span>
+      </p>
+      <audio id="audioPlayback" controls></audio>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+let userId = '<?= userId ?>';
+const landingPanel = document.getElementById("landingPanel");
+const recordingPanel = document.getElementById("recordingPanel");
+const tokenInput = document.getElementById("tokenInput");
+const goBtn = document.getElementById("goBtn");
+
+landingPanel.style.display = "block";
+
+
+goBtn.onclick = function () {
+  const token = tokenInput.value.trim();
+  if (!token) { alert("Token is required."); return; }
+  userId = token;
+  landingPanel.style.display = "none";
+  recordingPanel.style.display = "block";
+  loadNextUtterance();
+};
+
+tokenInput.addEventListener("keypress", function(e) {
+  if (e.key === "Enter") {
+    goBtn.click();
+    e.preventDefault();
+  }
+});
+
+
+let totalUtterances = 0;
+let completedUtterances = 0;
+const progressBar = document.getElementById('progressBar');
+
+function updateProgress() {
+  const percent = totalUtterances === 0 ? 0 : ((completedUtterances / totalUtterances) * 100).toFixed(2);
+  progressBar.style.width = percent + '%';
+  progressBar.setAttribute('aria-valuenow', percent);
+  progressBar.textContent = percent + '%';
+}
+
+
+let audioContext, mediaStream, sourceNode, processorNode, audioData, currentWavBlob;
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const redoBtn = document.getElementById('redoBtn');
+const submitBtn = document.getElementById('submitBtn');
+const audioPlayback = document.getElementById('audioPlayback');
+const spinner = document.getElementById('spinner');
+const utteranceText = document.getElementById('utteranceText');
+const recordingIndicator = document.getElementById('recordingIndicator');
+
+function loadNextUtterance() {
+  const loadingSpan = document.getElementById('loadingNext');
+  utteranceText.textContent = '';
+  startBtn.disabled = true;
+  loadingSpan.style.display = 'inline';
+
+  google.script.run.withSuccessHandler(data => {
+    loadingSpan.style.display = 'none';
+
+    const { nextUtterance, total, completed } = data;
+    totalUtterances = total;
+    completedUtterances = completed;
+    updateProgress();
+
+    if (!nextUtterance) {
+      utteranceText.textContent = 'All utterances recorded!';
+      startBtn.disabled = stopBtn.disabled = redoBtn.disabled = submitBtn.disabled = true;
+      return;
+    }
+    utteranceText.textContent = nextUtterance;
+    resetRecorder();
+    startBtn.disabled = false;
+  }).withFailureHandler(err => {
+    loadingSpan.style.display = 'none';
+    alert('Failed to load next utterance: ' + err.message);
+    startBtn.disabled = false;
+  }).getNextUnrecordedUtteranceWithProgress(userId);
+}
+
+
+function resetRecorder() {
+  audioData = [];
+  currentWavBlob = null;
+  audioPlayback.src = '';
+  startBtn.disabled = false;
+  stopBtn.disabled = redoBtn.disabled = submitBtn.disabled = true;
+}
+
+startBtn.onclick = async () => {
+  audioData = [];
+  audioContext = new (window.AudioContext || window.webkitAudioContext);
+  mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  sourceNode = audioContext.createMediaStreamSource(mediaStream);
+  processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+  sourceNode.connect(processorNode);
+  processorNode.connect(audioContext.destination);
+  processorNode.onaudioprocess = e => {
+    const input = e.inputBuffer.getChannelData(0);
+    audioData.push(new Float32Array(input));
+  };
+  recordingIndicator.style.display = 'block';
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+};
+
+stopBtn.onclick = () => {
+  mediaStream.getTracks().forEach(track => track.stop());
+  processorNode.disconnect();
+  sourceNode.disconnect();
+  const wavBlob = encodeWAV(audioData, audioContext.sampleRate);
+  audioPlayback.src = URL.createObjectURL(wavBlob);
+  currentWavBlob = wavBlob;
+  recordingIndicator.style.display = 'none';
+  stopBtn.disabled = startBtn.disabled = true;
+  redoBtn.disabled = submitBtn.disabled = false;
+};
+
+redoBtn.onclick = () => {
+  recordingIndicator.style.display = 'none';
+  resetRecorder();
+};
+
+submitBtn.onclick = () => {
+  if (!currentWavBlob) return;
+  submitBtn.disabled = true;
+  redoBtn.disabled = true;
+  spinner.style.display = 'inline';
+  const reader = new FileReader();
+  reader.onload = e => {
+    const arrayBuffer = e.target.result;
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    const base64Data = btoa(binary);
+    const fileName = utteranceText.textContent + '.wav';
+    google.script.run.withSuccessHandler(msg => {
+      alert(msg);
+      spinner.style.display = 'none';
+      loadNextUtterance();
+    }).withFailureHandler(err => {
+      alert('Upload failed: ' + err.message);
+      submitBtn.disabled = false;
+      redoBtn.disabled = false;
+      spinner.style.display = 'none';
+    }).saveRecordingBase64(base64Data, fileName, userId);
+  };
+  reader.readAsArrayBuffer(currentWavBlob);
+};
+
+function encodeWAV(chunks, sampleRate) {
+  let bufferLength = chunks.reduce((sum, c) => sum + c.length, 0);
+  let buffer = new Float32Array(bufferLength);
+  let offset = 0;
+  chunks.forEach(c => { buffer.set(c, offset); offset += c.length; });
+  const wavBuffer = new ArrayBuffer(44 + buffer.length * 2);
+  const view = new DataView(wavBuffer);
+
+  function writeString(view, offset, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  }
+  function floatTo16BitPCM(output, offset, input) {
+    for (let i = 0; i < input.length; i++, offset += 2) {
+      let s = Math.max(-1, Math.min(1, input[i]));
+      output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+  }
+
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + buffer.length * 2, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, buffer.length * 2, true);
+  floatTo16BitPCM(view, 44, buffer);
+
+  return new Blob([view], { type: 'audio/wav' });
+}
+</script>
+
+</body>
+</html>
